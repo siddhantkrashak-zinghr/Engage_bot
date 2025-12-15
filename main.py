@@ -13,11 +13,11 @@ Environment:
 
 import sys
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from config import EngageBotConfig
 from engage_bot import EngageBotChain
-from mcp_client import create_mcp_client
+from mcp_client import create_mcp_client, MCPClient
 
 # Setup logging
 logging.basicConfig(
@@ -46,20 +46,50 @@ def print_banner():
     print(banner)
 
 
+def print_available_tools(mcp_client: MCPClient, limit: int = 10) -> List[Dict[str, Any]]:
+    """Fetch and print a limited list of available tools."""
+    logger.info("Fetching available MCP tools...")
+    
+    # MCPClient's list_tools is synchronous and caches the result
+    available_tools = mcp_client.list_tools()
+    
+    print("\n🔍 Available MCP Tools (First 10):")
+    if not available_tools:
+        print("    - No tools found on MCP server. Check connection.")
+        return available_tools
+    
+    for i, tool in enumerate(available_tools):
+        if i >= limit:
+            print(f"    ... and {len(available_tools) - limit} more tools.")
+            break
+        print(f"    - **{tool['name']}**: {tool.get('description', 'No description')}")
+        
+    print("─" * 70)
+    return available_tools
+
+
+def get_user_jwt_token() -> str:
+    """Ask the user for their JWT token."""
+    # Use the example token from get_sample_queries as a prompt hint
+    example_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.your-actual-jwt-token"
+    
+    print(f"\n🔑 Authentication Required.")
+    jwt_token = input(f"   Enter your JWT token: ").strip()
+    
+    if not jwt_token:
+        logger.warning("No JWT token provided. Tool execution may fail.")
+    return jwt_token
+
+
 def run_interactive_mode(bot: EngageBotChain, jwt_token: str):
     """
     Run bot in interactive CLI mode.
-    
-    Args:
-        bot: EngageBotChain instance
-        jwt_token: JWT authentication token
     """
     print("\n🤖 Interactive Mode - Type 'exit' or 'quit' to stop\n")
     print("─" * 70)
     
     while True:
         try:
-            # Get user input
             query = input("\n💬 You: ").strip()
             
             if not query:
@@ -69,11 +99,9 @@ def run_interactive_mode(bot: EngageBotChain, jwt_token: str):
                 print("\n👋 Goodbye!\n")
                 break
             
-            # Process query
             print("\n🔄 Processing...\n")
             response = bot.invoke(query=query, jwt_token=jwt_token)
             
-            # Display response
             print(f"🤖 Bot:\n{response}\n")
             print("─" * 70)
             
@@ -88,16 +116,13 @@ def run_interactive_mode(bot: EngageBotChain, jwt_token: str):
 def run_batch_mode(bot: EngageBotChain, queries: list[Dict[str, str]]):
     """
     Run bot in batch mode with predefined queries.
-    
-    Args:
-        bot: EngageBotChain instance
-        queries: List of query dictionaries with 'query' and 'jwt' keys
     """
     print("\n📋 Batch Mode - Processing predefined queries\n")
     print("═" * 70)
     
     for i, item in enumerate(queries, 1):
         query = item.get("query", "")
+        # Use the master JWT token fetched at startup for batch execution
         jwt = item.get("jwt", "")
         
         print(f"\n[Query {i}/{len(queries)}]")
@@ -115,16 +140,20 @@ def run_batch_mode(bot: EngageBotChain, queries: list[Dict[str, str]]):
         print("═" * 70)
 
 
-def get_sample_queries() -> list[Dict[str, str]]:
-    """
-    Get sample queries for testing.
+def run_single_query_mode(bot: EngageBotChain, jwt_token: str):
+    """Run bot for a single query."""
+    query = input("\n💬 Enter your query: ").strip()
     
-    Returns:
-        List of query dictionaries
+    print("\n🔄 Processing...\n")
+    response = bot.invoke(query=query, jwt_token=jwt_token)
+    print(f"🤖 Response:\n{response}\n")
+    print("─" * 70)
+
+
+def get_sample_queries(jwt_token: str) -> list[Dict[str, str]]:
     """
-    # TODO: Replace with your actual JWT token
-    jwt_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.your-actual-jwt-token"
-    
+    Get sample queries for testing, using the provided JWT token.
+    """
     return [
         {
             "query": "Who all are celebrating their birthday today?",
@@ -157,15 +186,13 @@ def main():
     """Main application entry point"""
     print_banner()
     
+    mcp_client = None # Initialize client to None for cleanup
+    
     try:
-        # Load configuration
+        # 1. Configuration and Client Setup
         logger.info("Loading configuration...")
         config = EngageBotConfig.from_env()
         config.validate()
-        
-        logger.info(f"LLM Model: {config.llm.model}")
-        logger.info(f"MCP URL: {config.mcp.base_url}")
-        logger.info(f"Mock Mode: {config.enable_mock_mode}")
         
         # Create MCP client
         mcp_client = create_mcp_client(
@@ -175,12 +202,19 @@ def main():
             max_retries=config.mcp.max_retries
         )
         
-        # Initialize bot
-        logger.info("Initializing Engage Bot...")
-        bot = EngageBotChain(config=config, mcp_client=mcp_client)
+        # 2. Dynamic Tool Discovery & Display (New Requirement)
+        available_tools = print_available_tools(mcp_client)
+        
+        # 3. Initialize Bot with Dynamic Tools
+        logger.info("Initializing Engage Bot with dynamic tools...")
+        bot = EngageBotChain(
+            config=config, 
+            mcp_client=mcp_client, 
+            available_tools=available_tools
+        )
         logger.info("✅ Engage Bot initialized successfully!")
         
-        # Choose mode
+        # 4. Mode Selection
         print("\nSelect Mode:")
         print("1. Interactive Mode (CLI)")
         print("2. Batch Mode (predefined queries)")
@@ -188,34 +222,35 @@ def main():
         
         choice = input("\nEnter choice (1-3): ").strip()
         
+        # 5. Get JWT Token (Required for all execution modes)
+        jwt_token = ""
+        queries = []
+        if choice in ["1", "3"]:
+            jwt_token = get_user_jwt_token()
+        elif choice == "2":
+            # For batch mode, ask for a master token, then generate queries
+            jwt_token = get_user_jwt_token()
+            queries = get_sample_queries(jwt_token)
+            
+        # 6. Execute Mode
+        if not jwt_token:
+            print("\n🚨 Cannot proceed without a JWT token. Exiting.")
+            return
+
+        print(f"\n🔐 Using JWT token: {jwt_token[:10]}...{jwt_token[-4:]}")
+        
         if choice == "1":
-            # Interactive mode
-            jwt_token = input("\nEnter JWT token: ").strip()
-            if not jwt_token:
-                logger.warning("No JWT token provided. Using empty token.")
             run_interactive_mode(bot, jwt_token)
             
         elif choice == "2":
-            # Batch mode
-            queries = get_sample_queries()
             run_batch_mode(bot, queries)
             
         elif choice == "3":
-            # Single query test
-            query = input("\nEnter your query: ").strip()
-            jwt_token = input("Enter JWT token: ").strip()
-            
-            print("\n🔄 Processing...\n")
-            response = bot.invoke(query=query, jwt_token=jwt_token)
-            print(f"🤖 Response:\n{response}\n")
+            run_single_query_mode(bot, jwt_token)
             
         else:
             print("Invalid choice. Exiting.")
             return
-        
-        # Cleanup
-        mcp_client.close()
-        logger.info("Application completed successfully")
         
     except KeyboardInterrupt:
         print("\n\n👋 Application interrupted. Goodbye!")
@@ -223,6 +258,11 @@ def main():
         logger.error(f"Application error: {e}", exc_info=True)
         print(f"\n❌ Fatal Error: {e}\n")
         sys.exit(1)
+    finally:
+        # 7. Cleanup
+        if mcp_client:
+            mcp_client.close()
+            logger.info("MCP Client closed")
 
 
 if __name__ == "__main__":

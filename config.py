@@ -1,7 +1,7 @@
 """
 Configuration management for Engage Bot.
 
-File: config.py
+File: engage_bot/config.py
 """
 
 import os
@@ -17,11 +17,11 @@ load_dotenv()
 class LLMConfig:
     """LLM model configuration"""
     api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
-    model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "gpt-4o-mini"))
+    model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "zinghr-gpt-oss-20b"))
     temperature: float = 0.0
     max_tokens: int = 8000
     
-    # For custom model endpoints
+    # For custom model endpoints (e.g., zinghr-gpt-oss-20b-new)
     base_url: Optional[str] = field(
         default_factory=lambda: os.getenv("LLM_BASE_URL")
     )
@@ -36,11 +36,10 @@ class MCPConfig:
             "https://mservices-dev.zinghr.com/zingmcpserver"
         )
     )
-    tools_list_endpoint: str = "/tools/list"  # Endpoint to fetch available tools
+    sse_endpoint: str = "/sse"
     execute_endpoint: str = "/mcp_execute"
     timeout: int = 30
     max_retries: int = 3
-    cache_tools: bool = True  # Cache tools after first fetch
 
 
 @dataclass
@@ -66,11 +65,6 @@ class EngageBotConfig:
         default_factory=lambda: os.getenv("MOCK_MODE", "false").lower() == "true"
     )
     
-    # Dynamic tool discovery
-    enable_dynamic_tools: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_DYNAMIC_TOOLS", "true").lower() == "true"
-    )
-    
     @classmethod
     def from_env(cls) -> "EngageBotConfig":
         """Create configuration from environment variables"""
@@ -79,10 +73,10 @@ class EngageBotConfig:
     def validate(self) -> bool:
         """Validate configuration"""
         if not self.llm.api_key:
-            raise ValueError("LLM API key is required. Set OPENAI_API_KEY in .env file")
+            raise ValueError("LLM API key is required")
         
         if not self.mcp.base_url:
-            raise ValueError("MCP base URL is required. Set MCP_BASE_URL in .env file")
+            raise ValueError("MCP base URL is required")
         
         return True
 
