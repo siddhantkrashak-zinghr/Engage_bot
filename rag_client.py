@@ -174,7 +174,7 @@ class RAGClient:
 
 
 # ============================================================================
-# PROMPT TEMPLATES (Aligns with Dify Module Logic)
+# PROMPT TEMPLATES (Dify Module Logic)
 # ============================================================================
 
 RAG_TOOL_DEF = {

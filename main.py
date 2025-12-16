@@ -36,10 +36,10 @@ def print_banner():
     banner = """
     ╔═══════════════════════════════════════════════════════════════╗
     ║                                                               ║
-    ║                    ENGAGE BOT v1.0                           ║
+    ║                    ENGAGE BOT v1.1                           ║
     ║              LangChain LCEL Implementation                   ║
     ║                                                               ║
-    ║           Employee Engagement Query Assistant                ║
+    ║      Employee Engagement Assistant (MCP + RAG Enabled)       ║
     ║                                                               ║
     ╚═══════════════════════════════════════════════════════════════╝
     """
@@ -153,6 +153,7 @@ def run_single_query_mode(bot: EngageBotChain, jwt_token: str):
 def get_sample_queries(jwt_token: str) -> list[Dict[str, str]]:
     """
     Get sample queries for testing, using the provided JWT token.
+    Updated to include RAG (Policy/Knowledge) queries.
     """
     return [
         {
@@ -164,19 +165,19 @@ def get_sample_queries(jwt_token: str) -> list[Dict[str, str]]:
             "jwt": jwt_token
         },
         {
+            "query": "What are the leave policy rules?",  # RAG Query
+            "jwt": jwt_token
+        },
+        {
             "query": "Show me the learning courses available",
             "jwt": jwt_token
         },
         {
+            "query": "How do I apply for reimbursement?",  # RAG Query
+            "jwt": jwt_token
+        },
+        {
             "query": "Which employees received badges last month?",
-            "jwt": jwt_token
-        },
-        {
-            "query": "What languages does the platform support?",
-            "jwt": jwt_token
-        },
-        {
-            "query": "Who's celebrating work anniversary this week?",
             "jwt": jwt_token
         }
     ]
@@ -202,11 +203,12 @@ def main():
             max_retries=config.mcp.max_retries
         )
         
-        # 2. Dynamic Tool Discovery & Display (New Requirement)
+        # 2. Dynamic Tool Discovery & Display
         available_tools = print_available_tools(mcp_client)
         
         # 3. Initialize Bot with Dynamic Tools
-        logger.info("Initializing Engage Bot with dynamic tools...")
+        # Note: RAG Client is initialized internally by EngageBotChain using config
+        logger.info("Initializing Engage Bot with dynamic tools and RAG...")
         bot = EngageBotChain(
             config=config, 
             mcp_client=mcp_client, 
